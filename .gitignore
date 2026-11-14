@@ -9,3 +9,5 @@ __pycache__/
 task3_rag/.cache/
 # Local presentation and review preparation aids
 task3_rag/local_notes/
+# Personal execution guide
+task3_rag/RUNNING.md
