@@ -1,0 +1,22 @@
+# Environment and API keys
+.env
+*.env
+
+# Python virtual environment and bytecode
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+
+# Task specific generated files and caches
+logs/
+task4_tools/workspace/
+task4_tools/logs/
+task2_own_agent/logs/
+task1_opencode/conversation/
+results/
+
+# OS specific
+.DS_Store
+Thumbs.db
