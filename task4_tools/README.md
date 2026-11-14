@@ -66,15 +66,63 @@ Your tool layer is the only thing between the model and your computer. The hidde
 - Your `agent.py` must support `--mock` (use `MockOpenAIClient` from `mock_model.py`).
 - Task for the agent: *"Make all tests pass and fix the problem described in ISSUE.md. Do not modify tests."*
 
-## Workflow
+## How to run Task 4
+
+Run all commands from the lab repository root:
 
 ```bash
-uv run pytest task4_tools/tests -v                              # your tool layer against the public tests
-uv run python task4_tools/reset_workspace.py                    # fresh workspace
-uv run python task4_tools/agent.py --mock                       # your loop with the scripted fake model
+cd /Users/prasath/ASE_Labs/Lab1_Task_4/Agentic-Software-Engineering-Labs
+```
+
+Install the project dependencies once:
+
+```bash
+uv sync
+```
+
+Run the public tool-contract tests:
+
+```bash
+uv run pytest task4_tools/tests -v
+```
+
+Before each agent run, reset the disposable workspace. The original `tinyledger/`
+directory must not be edited directly:
+
+```bash
 uv run python task4_tools/reset_workspace.py
-uv run python task4_tools/agent.py                              # the real run (default model from .env)
+```
+
+For a deterministic run without an API key, use the scripted mock model:
+
+```bash
+uv run python task4_tools/agent.py --mock
+```
+
+The mock model exercises successful calls as well as invalid JSON, wrong argument
+types, path traversal, an unknown `run_shell` tool, test-file editing, and CLI
+injection attempts.
+
+To run the agent with the UPB Gateway, create `.env` in the repository root,
+add your personal key beginning with `sk-`, and connect to the university
+network or VPN:
+
+```bash
+cp .env.example .env
+# Edit .env and set UPB_AI_GATEWAY_KEY to your personal key.
+uv run python common/hello_gateway.py
+uv run python task4_tools/reset_workspace.py
+uv run python task4_tools/agent.py
+```
+
+Reset the workspace before switching between mock and real runs. The agent
+writes tool-call traces to `task4_tools/logs/trace.jsonl`.
+
+After a successful run, save the changes made inside the disposable workspace:
+
+```bash
 git -C task4_tools/workspace diff > task4_tools/final.diff
 ```
 
-With the mock model, a correct tool layer ends with all tests passing, and every malicious call is rejected.
+With the mock model, a correct tool layer ends with all tests passing and every
+malicious call rejected. Never commit `.env` or any API key.
