@@ -29,7 +29,7 @@ The two best retrieval configurations, R4 and R5, answered the same 50 stratifie
 
 R4 has 38 correct answers and R5 has 37. Both abstain on all ten multi-hop questions and all ten unanswerable questions. Faithfulness excludes abstentions and covers 28 R4 answers and 27 R5 answers.
 
-Ibrahim reviewed ten R4 judge decisions and agreed with all ten correctness judgments. The decisions and reasons are recorded in [review_judge_R4_s256.jsonl](results/review_judge_R4_s256.jsonl). A limitation concerns relevance scores for abstentions: the judge generates generic questions about pricing or settings, which can be unrelated to the original question. Agreement with correctness therefore does not validate every relevance score.
+
 
 ## 5. Cost and latency
 
