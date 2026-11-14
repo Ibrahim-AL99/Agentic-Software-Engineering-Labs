@@ -1,87 +1,68 @@
-# Task 2 – Build your own (small) coding agent
+# Task 2 – Our Own Coding Agent
 
-There is no starter code for this task, only this specification and some helpers.
-Read the task description on the lab sheet first.
+## How to run
 
-## What's in this folder
-
-| File | Purpose |
-|---|---|
-| `style_guide/` | The fictional "UPB Agentic SE Web Style Guide" (55 Markdown documents) |
-| `check_site.py` | Checks a website against the basic requirements AND the style guide (`--basic` for basic only) |
-| `embed_images.py` | Replaces `{{image:<file>}}` placeholders with embedded base64 images |
-
-Helpers you can import from `common/` (run your code from the repository root, or add it to `sys.path`):
-
-```python
-from common.llm_client import LLMClient, count_tokens
-from common.site_checker import check_site, member_names_from_content
-from common.embed_images import embed_images
-```
-
-## Specification
-
-### Allowed dependencies
-Python standard library, `numpy`, `rank-bm25`, `tiktoken`, the provided `common/` helpers,
-optionally `sentence-transformers` for local embeddings.
-Not allowed: LangChain, LlamaIndex, Haystack, agent SDKs, vector databases.
-
-### RAG component – `rag.py`
-- Loads all documents from `style_guide/` and splits them into chunks.
-- Embeds the chunks, keeps the vectors in memory (a numpy matrix is enough).
-- Provides `search(query: str, k: int) -> list[Chunk]`, returning the most similar chunks by cosine similarity.
-  Each chunk carries its text and the id of its source document (e.g. `SG-13`).
-- Context budget rules:
-  - one `search_style_guide` observation may contain at most **1,000 tokens** of style guide text
-    (measure with `count_tokens` from `common/llm_client.py`)
-  - your system prompt and task description must not contain style guide text
-
-### Agent loop – `agent.py`
-The model answers with exactly one JSON object per step:
-
-```json
-{"thought": "short reasoning", "action": "<action name>", "args": {}}
-```
-
-Required actions:
-
-| Action | Args | What your code does | Observation returned to the model |
-|---|---|---|---|
-| `search_style_guide` | `{"query": str}` | calls `rag.search` | retrieved chunks with document ids (≤ 1,000 tokens) |
-| `read_profiles` | `{}` | reads all `content/*.md` files (not `_template.md`) | profile texts + list of available image files |
-| `write_site` | `{}` + the HTML in a ` ```html ` code block directly after the JSON (or `{"html": str}`) | resolves `{{image:...}}` placeholders, saves the file, runs `check_site(..., mode="full")` | the checker report (or an error, e.g. unknown image) |
-| `finish` | `{"summary": str}` | accepted only if the last checker report passed | if rejected: the failing checks |
-
-Why the extra code block for `write_site`? A whole HTML page inside a JSON string needs thousands of escaped
-quotes and newlines, and models get that wrong surprisingly often. You may support both variants.
-
-Behaviour your loop must have:
-- A maximum number of steps (e.g. 25). Stop with a clear message when it is reached.
-- If the model output is not valid JSON or uses an unknown action or wrong args: don't crash.
-  Send an error observation back and continue. Count it as a step.
-- The model must never write base64 image data. It uses placeholders like `<img src="{{image:anna.jpg}}" alt="...">`.
-- Human in the loop: after an accepted `finish`, ask the user for feedback on the terminal.
-  Non-empty feedback is appended as a new user message and the loop continues. Empty input ends the run.
-- Don't use the native function-calling / `tools` API. You build the protocol yourselves.
-- A complete website is several thousand output tokens, plus the model's hidden reasoning tokens. Set `max_tokens` high
-  enough (or don't set it), otherwise the answer is cut off (the log shows `"finish_reason": "length"`).
-- Embeddings: use the gateway embedding model via `llm.embed(...)` (free), or a local model.
-
-### Command line
 From the repository root:
 
 ```bash
-uv run python task2_own_agent/agent.py --content task1_opencode/content --out task2_own_agent/site/index.html
+uv run python task2_own_agent/agent.py \
+    --content task1_opencode/content \
+    --out task2_own_agent/site/index.html
 ```
 
-You may add options (model, max steps, k, ...). Document them in your README.
+Available options:
 
-### Logs
-- Store every message sent to and received from the model, with step numbers, in `task2_own_agent/logs/run_XX.jsonl`.
-- The simplest way: use `LLMClient(log_path=...)` and add your own entries (observations, human feedback) with `llm.log_event({...})`.
-- Submit the logs of at least one complete run that produced your submitted `site/index.html`.
+| Option | Default | Description |
+|---|---|---|
+| `--content DIR` | `task1_opencode/content` | Directory with `<firstname>.md` profiles |
+| `--out FILE` | `task2_own_agent/site/index.html` | Output HTML file |
+| `--max-steps N` | `25` | Maximum agent steps before stopping |
+| `--k N` | `5` | Number of chunks returned per style-guide search |
+| `--model NAME` | gateway default | Override the chat model |
 
-### What your README must contain
-- how to run the agent
-- your design decisions: chunking, embedding model, k, prompt design, how you handle invalid output
-- known limitations
+To verify the generated site:
+
+```bash
+uv run python task2_own_agent/check_site.py task2_own_agent/site/index.html --content task1_opencode/content
+```
+
+---
+
+## Design decisions
+
+### Chunking strategy
+
+Documents are split on double newlines (paragraph boundaries). Short consecutive paragraphs are merged until the chunk reaches 200 tokens, measured with `count_tokens` from `common/llm_client.py`. This keeps chunks semantically coherent — a heading stays with the paragraph below it — while staying within a predictable size. Single paragraphs that exceed 200 tokens are kept as one chunk rather than split mid-sentence.
+
+### Embedding model
+
+We use the gateway embedding model (`kiconnect.qwen3-embedding-8b`) via `llm.embed()`, which is free. Vectors are L2-normalised and stored in a NumPy float32 matrix. Query vectors are normalised the same way, so retrieval is a simple matrix–vector dot product (cosine similarity). No external vector database is used.
+
+### k = 5
+
+Each `search_style_guide` call returns 5 chunks, capped at 1 000 tokens total. With 55 style guide documents chunked into ~55 pieces, k = 5 gives enough coverage per query without flooding the context window. The agent makes multiple targeted searches (colors, theme, typography, layout, etc.) rather than one broad search, so a small k per query is sufficient.
+
+### Prompt design
+
+The system prompt explains the goal, the JSON action protocol, and the four available actions. It deliberately contains no style guide text — the agent must discover all rules via `search_style_guide`. Good search queries are suggested (e.g. "colors day mode", "theme persistence", "hot take badge") to guide the agent toward the right documents without giving away the answers. The `finish` action is blocked until `write_site` passes all checks, which forces the agent to fix failures rather than skip them.
+
+Images are handled with `{{image:filename.svg}}` placeholders in the HTML. The agent is explicitly told never to write base64 data itself; `embed_images()` resolves the placeholders after the HTML is written.
+
+### Error handling
+
+- **Invalid JSON**: if no valid JSON action is found in the model response, an error observation is sent back and the loop continues. The step is counted.
+- **Unknown action**: an error observation lists the valid actions.
+- **Missing HTML for `write_site`**: an error observation explains the expected code-block format.
+- **Image not found**: `embed_images()` raises `FileNotFoundError`; the error message is returned as the observation so the agent can correct the filename.
+- **`finish` before passing checks**: rejected with the last checker report so the agent knows what to fix.
+- **Non-interactive stdin** (e.g. piped input): `EOFError` on the human-feedback prompt is caught and treated as empty input (accept).
+
+---
+
+## Known limitations
+
+- **No chunk overlap**: paragraphs are not duplicated across chunk boundaries. A rule that spans two paragraphs might be split, reducing retrieval accuracy for that rule.
+- **Single-pass embedding**: the index is built once at startup. If the style guide changes during a run, the index is stale.
+- **No re-ranking**: retrieval is pure cosine similarity. A cross-encoder re-ranker would improve precision but was not used to keep dependencies minimal.
+- **Context grows with steps**: the full message history is kept in memory and sent to the model every step. Very long runs (many write-fix cycles) can approach the context limit.
+- **Placeholder content**: member profiles currently contain placeholder text. The site must be regenerated after teammates fill in their real information.
