@@ -101,3 +101,46 @@ We evaluate context recall@5 of `retrieved_doc_ids` and the correctness of `answ
 - BM25: `rank_bm25.BM25Okapi`. Think about how you tokenize identifiers like `PQ-E4663` or `spool.buffer_bytes`.
 - Hybrid search: BM25 scores and cosine similarities have completely different ranges. Normalize before you combine them.
 - Don't tune on the questions you report results on without saying so.
+
+## Reproduce the implementation
+
+Run all commands from the repository root. Requirements: Python 3.11+, `uv`, and UPB gateway access (university network/VPN).
+
+### Setup and tests
+
+```bash
+uv sync --extra local
+cp -n .env.example .env
+```
+
+Set your personal `UPB_AI_GATEWAY_KEY` in `.env`. 
+```bash
+uv run python -m unittest discover -s task3_rag/tests -v
+```
+
+### Experiments
+
+Run these commands in order:
+
+```bash
+uv run python task3_rag/experiments.py retrieval
+uv run python task3_rag/experiments.py e2e
+uv run python task3_rag/experiments.py predict
+```
+
+- `retrieval`: evaluates R1–R5 at k=5, including R3 with 128/256/512-word chunks. Defaults: 32-word overlap, hybrid weight 0.5, and 30 candidates for cross-encoder reranking.
+- `e2e`: selects two distinct configurations by recall, then precision and latency; generates and judges answers for the same stratified 50 development questions.
+- `predict`: selects the configuration with the higher judged correctness and exports all 100 test predictions to `task3_rag/predictions_test.jsonl`.
+
+`rag.py` implements retrieval and generation; `run.py` runs individual configurations; `experiments.py` orchestrates evaluation with the supplied scripts. Use `uv run python task3_rag/run.py --help` for individual runs.
+
+### Results and review
+
+Metrics, answers, timing/cost manifests and comparison tables are saved in `task3_rag/results/`; judge API logs are saved in `logs/`. [ANALYSIS.md](ANALYSIS.md) reports the findings, five failures and deployment recommendation. Ten manual judge checks are recorded in `results/review_judge_R4_s256.jsonl`.
+
+To regenerate tables from existing results:
+
+```bash
+uv run python task3_rag/experiments.py report
+```
+
